@@ -1,0 +1,2 @@
+# CORE
+Embedded Computing Project 
