@@ -45,6 +45,9 @@ static SOCKET tcp_client_socket = -1;
 /** Wi-Fi connection state */
 static uint8_t wifi_connected;
 
+/** Receive buffer definition. */
+static uint8_t gau8ReceivedBuffer[MAIN_WIFI_M2M_BUFFER_SIZE] = {0};
+
 /************************************************************************/
 /*  SOCKET MSGs                                                         */
 /************************************************************************/
@@ -136,15 +139,16 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
   /* Socket connected */
   case SOCKET_MSG_CONNECT:
   {
+    uint16_t rtn;
+    memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
+    sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+    
     tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
     if (pstrConnect && pstrConnect->s8Error >= 0) {
       printf("socket_cb: connect success!\r\n");
-      
-      //int8_t  messageAck[]="GET led=status";
-      //int8_t  messageAck[]="GET /btn/1";
-      send(tcp_client_socket, POST_MSG_LED, sizeof(POST_MSG_LED), 0);
-      recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-      
+      rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+      memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+      //recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);  
       } else {
       printf("socket_cb: connect error!\r\n");
       close(tcp_client_socket);
@@ -157,6 +161,7 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 	case SOCKET_MSG_SEND:
 	{
 		printf("socket_cb: send success!\r\n");
+    recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);  
 	  //printf("TCP Server Test Complete!\r\n");
 		//printf("close socket\n");
 		//close(tcp_client_socket);
@@ -172,19 +177,21 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
     uint8_t  messageAck[64];
     uint16_t messageAckSize;
     uint8_t  command;
-    
+        
 		if (pstrRecv && pstrRecv->s16BufferSize > 0) {        
       // Para debug das mensagens do socket
 			printf("%s \r\n", pstrRecv->pu8Buffer);   
        
       // limpa o buffer de recepcao e tx
-      memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize); //limpa buffer
+      memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize); 
       
       // envia a resposta
-      send(tcp_client_socket, POST_MSG_LED, sizeof(POST_MSG_LED), 0); //manda dnv os dados
-      
+      delay_s(1);
+      sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+      send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+ 
       // Requista novos dados
-      recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+      //recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
       
  		} else {
 			printf("socket_cb: recv error!\r\n");
@@ -313,20 +320,20 @@ int main(void)
 		m2m_wifi_handle_events(NULL);
 
 		if (wifi_connected == M2M_WIFI_CONNECTED) {
-			if (tcp_client_socket < 0) {
-				if ((tcp_client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-					printf("main: failed to create TCP client socket error!\r\n");
-					continue;
-			}
+				if (tcp_client_socket < 0) {
+  				if ((tcp_client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    				printf("main: failed to create TCP client socket error!\r\n");
+    				continue;
+  				}
           
-			  /* Connect TCP client socket. */
-			  if (connect(tcp_client_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) != SOCK_ERR_NO_ERROR ) {
-				printf("main: failed to connect socket error!\r\n");
-				close(tcp_client_socket);
-				continue;
-			  }else{
-				printf("Conectado ! \n");
-			  }             
+          /* Connect TCP client socket. */
+          if (connect(tcp_client_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) != SOCK_ERR_NO_ERROR ) {
+            printf("main: failed to connect socket error!\r\n");
+            close(tcp_client_socket);
+            continue;
+          }else{
+            printf("Conectado ! \n");
+          }             
         }				
 		}
 	}

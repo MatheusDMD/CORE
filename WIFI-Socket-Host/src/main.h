@@ -52,13 +52,15 @@ extern "C" {
 #define MAIN_WIFI_M2M_PRODUCT_NAME        "SAME70"
 #define MAIN_WIFI_M2M_SERVER_IP           0xFFFFFFFF /* 255.255.255.255 */
 
-#define POST_MSG_LED											"GET /?led=status"
 
+//#define MAIN_PREFIX_BUFFER                "GET /led=status HTTP/1.1\r\nHost: api.openweathermap.org\r\nAccept: */*\r\n\r\n"
+#define MAIN_PREFIX_BUFFER                  "GET /?led=status"
+#define MAIN_POST                           " HTTP/1.1\r\n Accept: */*\r\n\r\n"
 
 #define MAIN_WIFI_M2M_BUFFER_SIZE          1460
 
 #define MAIN_SERVER_PORT                   (8000)
-#define MAIN_SERVER_IP                     0x9000A8C0//0x9000A8C0 // 0x8A00A8C0  // 192.168.0.138 192.168.0.144
+#define MAIN_SERVER_IP                     0x8A00A8C0//0x9000A8C0 // 0x8A00A8C0  // 192.168.0.138 192.168.0.144
 
 #ifdef __cplusplus
 }
