@@ -11,7 +11,7 @@ global_status = ['OFF']*3
 def hello_world():
     return 'Hello, World!'
 
-@app.route('/led',methods=['POST'])
+@app.route('/led',methods=['GET'])
 def led_status_change():
     global global_status
     status = int(request.args.get('st'))
@@ -22,6 +22,7 @@ def led_status_change():
         global_status[led_number-1] = 'OFF'
     else:
         global_status[led_number-1] = 'None'
+    print("LED is now:{0}".format(status))
     return "LED is now:{0}".format(status)
 
 @app.route('/btn_status/<int:btn>',methods=['GET'])

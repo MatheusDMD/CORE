@@ -16,7 +16,7 @@ new (function() {
     };
 
     ext.get_btn_status = function(btn, callback) {
-      var url_btn = "http://127.0.0.1:8000/?led=status&ln="+btn;
+      var url_btn = "http://192.168.43.33:5000/btn/"+btn;
       console.log(url_btn);
       http.onreadystatechange = function() {
         if (http.readyState === XMLHttpRequest.DONE) {
@@ -45,11 +45,11 @@ new (function() {
     // stop waiting.
     ext.toggle_led = function(led_number, status) {
       if(status == 'ON'){
-        status = "set";
+        status = "1";
       }else if (status == 'OFF'){
-        status = "clear";
+        status = "0";
       }
-      var url_led = "http://127.0.0.1:5000/?led="+status+"&ln="+led_number;
+      var url_led = "http://192.168.43.33:5000/led?st="+status+"&ln="+led_number;
       console.log(url_led);
       http.open("GET", url_led, true);
       http.send();
