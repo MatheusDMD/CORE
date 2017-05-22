@@ -17,10 +17,28 @@
 /**
  * LEDs
  */
-#define LED_PIO_ID		ID_PIOC
-#define LED_PIO       PIOC
-#define LED_PIN		    8
-#define LED_PIN_MASK  (1<<LED_PIN)
+#define LED_PIO_ID			ID_PIOC
+#define LED_PIO       	PIOC
+#define LED_PIN					8
+#define LED_PIN_MASK  	(1<<LED_PIN)
+
+// LED 1
+#define LED1_PIO_ID    ID_PIOC
+#define LED1_PIO       PIOC
+#define LED1_PIN       19
+#define LED1_PIN_MASK  (1 << LED1_PIN)
+
+// LED 2
+#define LED2_PIO_ID    ID_PIOD
+#define LED2_PIO       PIOD
+#define LED2_PIN       26
+#define LED2_PIN_MASK  (1 << LED2_PIN)
+
+// LED 3
+#define LED3_PIO_ID    ID_PIOD
+#define LED3_PIO       PIOD
+#define LED3_PIN       11
+#define LED3_PIN_MASK  (1 << LED3_PIN)
 
 /************************************************************************/
 /*  Global vars                                                         */
@@ -178,7 +196,7 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 	{
 		printf("socket_cb: send success!\r\n");
     recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-	  //printf("TCP Server Test Complete!\r\n");
+	  	//printf("TCP Server Test Complete!\r\n");
 		//printf("close socket\n");
 		//close(tcp_client_socket);
 		//close(tcp_server_socket);
@@ -199,11 +217,24 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 
 		// Para debug das mensagens do socket
 			printf("%s",pstrRecv->pu8Buffer);
-			const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-2];
-			if(!strcmp(last, "ON"))
+			const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-4];
+			printf("%s", last);
+			if(last[0] == '1')
 				pio_clear(LED_PIO, LED_PIN_MASK);
-			else if(!strcmp(last, "FF"))
+			else if(last[0] == '0')
 				pio_set(LED_PIO, LED_PIN_MASK);
+			if(last[1] == '1')
+				pio_clear(LED1_PIO, LED1_PIN_MASK);
+			else if(last[1] == '0')
+				pio_set(LED1_PIO, LED1_PIN_MASK);
+			if(last[2] == '1')
+				pio_clear(LED2_PIO, LED2_PIN_MASK);
+			else if(last[2] == '0')
+				pio_set(LED2_PIO, LED2_PIN_MASK);
+			if(last[3] == '1')
+				pio_clear(LED3_PIO, LED3_PIN_MASK);
+			else if(last[3] == '0')
+				pio_set(LED3_PIO, LED3_PIN_MASK);
 
       // limpa o buffer de recepcao e tx
       memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize);
@@ -316,6 +347,13 @@ int main(void)
 
 	pmc_enable_periph_clk(LED_PIO_ID);
 	pio_set_output(LED_PIO, LED_PIN_MASK, 0, 0, 0);
+	pmc_enable_periph_clk(LED1_PIO_ID);
+	pio_set_output(LED1_PIO, LED1_PIN_MASK, 0, 0, 0);
+	pmc_enable_periph_clk(LED2_PIO_ID);
+	pio_set_output(LED2_PIO, LED2_PIN_MASK, 0, 0, 0);
+	pmc_enable_periph_clk(LED3_PIO_ID);
+	pio_set_output(LED3_PIO, LED3_PIN_MASK, 0, 0, 0);
+
 
 	/* Initialize socket address structure. */
 	addr.sin_family = AF_INET;
