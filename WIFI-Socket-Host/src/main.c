@@ -66,6 +66,12 @@ static uint8_t wifi_connected;
 /** Receive buffer definition. */
 static uint8_t gau8ReceivedBuffer[MAIN_WIFI_M2M_BUFFER_SIZE] = {0};
 
+struct sockaddr_in addr;
+tstrWifiInitParam param;
+int8_t ret;
+int ready_to_send;
+uint16_t rtn;
+
 /************************************************************************/
 /*  SOCKET MSGs                                                         */
 /************************************************************************/
@@ -130,18 +136,50 @@ uint8_t message_parsing(uint8_t *message){
  * @Brief Inicializa o pino do LED
  */
 
-void led_toggle(char state){
-	printf(state);
-	if(state == "S"){
-		pio_clear(LED_PIO, LED_PIN_MASK);
-		printf("LED ON");
-	}
-	else{
-		pio_set(LED_PIO, LED_PIN_MASK);
-		printf("LED OFF");
-	}
+void TC_init( Tc *TC, uint32_t ID_TC,  uint32_t channel, uint32_t freq ){
+	uint32_t ul_div;
+	uint32_t ul_tcclks;
+	uint32_t ul_sysclk = sysclk_get_cpu_hz();
+	
+	/* Configura o PMC */
+	pmc_enable_periph_clk(ID_TC);
+
+	/** Configura o TC para operar em  4Mhz e interrup�c�o no RC compare */
+	tc_find_mck_divisor(freq, ul_sysclk, &ul_div, &ul_tcclks, ul_sysclk);
+	tc_init(TC, channel, ul_tcclks | TC_CMR_CPCTRG);
+	tc_write_rc(TC, channel, (ul_sysclk / ul_div) / freq);
+
+	/* Configura e ativa interrup�c�o no TC canal 0 */
+	NVIC_EnableIRQ((IRQn_Type) ID_TC);
+	tc_enable_interrupt(TC, channel, TC_IER_CPCS);
+
+
+	/* Inicializa o canal 0 do TC */
+	tc_start(TC, channel);
 }
 
+/************************************************************************/
+/*  Handlers                                                           */
+/************************************************************************/
+void TC0_Handler(void){
+	volatile uint32_t ul_dummy;
+
+    /****************************************************************
+	* Devemos indicar ao TC que a interrup��o foi satisfeita.
+    ******************************************************************/
+	ul_dummy = tc_get_status(TC0, 0);
+
+	/* Avoid compiler warning */
+	UNUSED(ul_dummy);
+
+	if(ready_to_send){
+	    memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
+	    sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+		rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+		memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+		printf("Pronto para enviar: %d \n", rtn);
+	}
+}
 /************************************************************************/
 /*  CallBacks                                                           */
 /************************************************************************/
@@ -173,20 +211,21 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
   /* Socket connected */
   case SOCKET_MSG_CONNECT:
   {
-    uint16_t rtn;
-    memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-    sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+    //memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
+    //sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
 
     tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
     if (pstrConnect && pstrConnect->s8Error >= 0) {
-      printf("socket_cb: connect success!\r\n");
-      rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
-      memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+		ready_to_send = 1;
+		//printf("socket_cb: connect success!\r\n");
+		//rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+		//memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
       //recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
       } else {
-      printf("socket_cb: connect error!\r\n");
-      close(tcp_client_socket);
-      tcp_client_socket = -1;
+		  printf("socket_cb: connect error!\r\n");
+		  ready_to_send = 0;
+		  close(tcp_client_socket);
+		  tcp_client_socket = -1;
     }
   }
   break;
@@ -195,8 +234,8 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 	case SOCKET_MSG_SEND:
 	{
 		printf("socket_cb: send success!\r\n");
-    recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-	  	//printf("TCP Server Test Complete!\r\n");
+		recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+	  //printf("TCP Server Test Complete!\r\n");
 		//printf("close socket\n");
 		//close(tcp_client_socket);
 		//close(tcp_server_socket);
@@ -207,7 +246,6 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 	case SOCKET_MSG_RECV:
 	{
 		tstrSocketRecvMsg *pstrRecv = (tstrSocketRecvMsg *)pvMsg;
-
     uint8_t  messageAck[64];
     uint16_t messageAckSize;
     uint8_t  command;
@@ -216,33 +254,33 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 
 
 		// Para debug das mensagens do socket
-			printf("%s",pstrRecv->pu8Buffer);
-			const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-4];
-			printf("%s", last);
-			if(last[0] == '1')
-				pio_clear(LED_PIO, LED_PIN_MASK);
-			else if(last[0] == '0')
-				pio_set(LED_PIO, LED_PIN_MASK);
-			if(last[1] == '1')
-				pio_clear(LED1_PIO, LED1_PIN_MASK);
-			else if(last[1] == '0')
-				pio_set(LED1_PIO, LED1_PIN_MASK);
-			if(last[2] == '1')
-				pio_clear(LED2_PIO, LED2_PIN_MASK);
-			else if(last[2] == '0')
-				pio_set(LED2_PIO, LED2_PIN_MASK);
-			if(last[3] == '1')
-				pio_clear(LED3_PIO, LED3_PIN_MASK);
-			else if(last[3] == '0')
-				pio_set(LED3_PIO, LED3_PIN_MASK);
+		printf("%s",pstrRecv->pu8Buffer);
+		const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-4];
+		printf("%s", last);
+		if(last[0] == '1')
+		pio_clear(LED_PIO, LED_PIN_MASK);
+		else if(last[0] == '0')
+		pio_set(LED_PIO, LED_PIN_MASK);
+		if(last[1] == '1')
+		pio_clear(LED1_PIO, LED1_PIN_MASK);
+		else if(last[1] == '0')
+		pio_set(LED1_PIO, LED1_PIN_MASK);
+		if(last[2] == '1')
+		pio_clear(LED2_PIO, LED2_PIN_MASK);
+		else if(last[2] == '0')
+		pio_set(LED2_PIO, LED2_PIN_MASK);
+		if(last[3] == '1')
+		pio_clear(LED3_PIO, LED3_PIN_MASK);
+		else if(last[3] == '0')
+		pio_set(LED3_PIO, LED3_PIN_MASK);
 
       // limpa o buffer de recepcao e tx
       memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize);
 
       // envia a resposta
-      delay_s(1);
-      sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
-      send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+      //delay_s(1);
+      //sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+      //send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
 
       // Requista novos dados
       //recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
@@ -330,10 +368,7 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
  */
 int main(void)
 {
-	tstrWifiInitParam param;
-	int8_t ret;
-	struct sockaddr_in addr;
-
+	ready_to_send = 0;
 	/* Initialize the board. */
 	sysclk_init();
 	board_init();
@@ -347,13 +382,15 @@ int main(void)
 
 	pmc_enable_periph_clk(LED_PIO_ID);
 	pio_set_output(LED_PIO, LED_PIN_MASK, 0, 0, 0);
+
+	pmc_enable_periph_clk(LED_PIO_ID);
+	pio_set_output(LED_PIO, LED_PIN_MASK, 0, 0, 0);
 	pmc_enable_periph_clk(LED1_PIO_ID);
 	pio_set_output(LED1_PIO, LED1_PIN_MASK, 0, 0, 0);
 	pmc_enable_periph_clk(LED2_PIO_ID);
 	pio_set_output(LED2_PIO, LED2_PIN_MASK, 0, 0, 0);
 	pmc_enable_periph_clk(LED3_PIO_ID);
 	pio_set_output(LED3_PIO, LED3_PIN_MASK, 0, 0, 0);
-
 
 	/* Initialize socket address structure. */
 	addr.sin_family = AF_INET;
@@ -371,6 +408,8 @@ int main(void)
 		while (1) {
 		}
 	}
+	/* Initialize GET TC */
+	TC_init(TC0, ID_TC0, 0, 2);
 
 	/* Initialize socket module */
 	socketInit();
@@ -383,21 +422,19 @@ int main(void)
 		m2m_wifi_handle_events(NULL);
 
 		if (wifi_connected == M2M_WIFI_CONNECTED) {
-				if (tcp_client_socket < 0) {
-  				if ((tcp_client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    				printf("main: failed to create TCP client socket error!\r\n");
-    				continue;
-  				}
+			if (tcp_client_socket < 0) {
+				if ((tcp_client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+					printf("main: failed to create TCP client socket error!\r\n");
+				}
 
-          /* Connect TCP client socket. */
-          if (connect(tcp_client_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) != SOCK_ERR_NO_ERROR ) {
-            printf("main: failed to connect socket error!\r\n");
-            close(tcp_client_socket);
-            continue;
-          }else{
-            printf("Conectado ! \n");
-          }
-        }
+				/* Connect TCP client socket. */
+				if (connect(tcp_client_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) != SOCK_ERR_NO_ERROR ) {
+					printf("main: failed to connect socket error!\r\n");
+					close(tcp_client_socket);
+					}else{
+					printf("Conectado ! \n");
+				}
+			}
 		}
 	}
 
