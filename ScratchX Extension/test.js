@@ -1,6 +1,7 @@
 /* Extension demonstrating a blocking command block */
 /* Sayamindu Dasgupta <sayamindu@media.mit.edu>, May 2014 */
 var http = new XMLHttpRequest();
+var addr = "http://192.168.0.144:5000"
 var btn_clicked = false; // This becomes true after the alarm goes off
 var btn_clicked_id = 0;
 new (function() {
@@ -17,7 +18,7 @@ new (function() {
 
     ext.get_btn_status = function(btn, callback) {
       //192.168.43.33
-      var url_btn = "http://192.168.0.144:5000/btn_status/"+btn;
+      var url_btn = addr + "/btn_status?bt="+btn;
       console.log(url_btn);
       http.onreadystatechange = function() {
         if (http.readyState === XMLHttpRequest.DONE) {
@@ -27,7 +28,7 @@ new (function() {
               btn_clicked_id = btn;
             }
             callback();
-       }
+          }
       };
       http.open("GET", url_btn, true);
       http.send();
@@ -51,7 +52,7 @@ new (function() {
       }else if (status == 'OFF'){
         status = "0";
       }
-      var url_led = "http://192.168.0.144:5000/led?st="+status+"&ln="+led_number;
+      var url_led = addr + "/led?st="+status+"&ln="+led_number;
       console.log(url_led);
       http.open("GET", url_led, true);
       http.send();
