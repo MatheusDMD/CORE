@@ -40,6 +40,30 @@
 #define LED3_PIN       11
 #define LED3_PIN_MASK  (1 << LED3_PIN)
 
+//Board button
+#define BUT_PIO_ID      ID_PIOA
+#define BUT_PIO         PIOA
+#define BUT_PIN					11
+#define BUT_PIN_MASK    (1 << BUT_PIN)
+#define BUT_DEBOUNCING_VALUE  79
+
+// Botão 1
+#define BUT1_PIO_ID   ID_PIOA
+#define BUT1_PIO      PIOA
+#define BUT1_PIN      2
+#define BUT1_PIN_MASK (1 << BUT1_PIN)
+
+// Botão 2
+#define BUT2_PIO_ID   ID_PIOD
+#define BUT2_PIO      PIOD
+#define BUT2_PIN      30
+#define BUT2_PIN_MASK (1 << BUT2_PIN)
+
+// Botão 3
+#define BUT3_PIO_ID   ID_PIOC
+#define BUT3_PIO      PIOC
+#define BUT3_PIN      13
+#define BUT3_PIN_MASK (1 << BUT3_PIN)
 /************************************************************************/
 /*  Global vars                                                         */
 /************************************************************************/
@@ -65,6 +89,8 @@ static uint8_t wifi_connected;
 
 /** Receive buffer definition. */
 static uint8_t gau8ReceivedBuffer[MAIN_WIFI_M2M_BUFFER_SIZE] = {0};
+	
+static uint8_t gau8SentBuffer[MAIN_WIFI_M2M_BUFFER_SIZE] = {0};
 
 struct sockaddr_in addr;
 tstrWifiInitParam param;
@@ -173,16 +199,127 @@ void TC0_Handler(void){
 	UNUSED(ul_dummy);
 
 	if(ready_to_send){
-	    memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-	    sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
-		rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+	  memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
 		memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+	  sprintf((char *)gau8SentBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+		rtn = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
+	  recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
 		printf("Pronto para enviar: %d \n", rtn);
 	}
 }
 /************************************************************************/
 /*  CallBacks                                                           */
 /************************************************************************/
+
+void but_Handler(uint32_t id, uint32_t mask) {
+	printf("oi, sou o handler \n");
+	//limpa interrupcao do PIO
+	uint32_t pioIntStatus;
+	pioIntStatus =  pio_get_interrupt_status(BUT_PIO);
+	
+	uint16_t rtn_err;
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+	sprintf((char *)gau8SentBuffer, "%s%s%s", MAIN_PREFIX_BUFFER_POST, "0", MAIN_POST);
+	rtn_err = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
+	
+	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);	
+	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+
+	printf("rtn_err: %d \n", rtn_err);
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+}
+
+void but1_Handler(uint32_t id, uint32_t mask) {
+	printf("oi, sou o handler \n");
+	//limpa interrupcao do PIO
+	uint32_t pioIntStatus;
+	pioIntStatus =  pio_get_interrupt_status(BUT1_PIO);
+	
+	uint16_t rtn_err;
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+	sprintf((char *)gau8SentBuffer, "%s%s%s", MAIN_PREFIX_BUFFER_POST, "1", MAIN_POST);
+	rtn_err = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
+	
+	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+
+	printf("rtn_err: %d \n", rtn_err);
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+}
+
+
+void but2_Handler(uint32_t id, uint32_t mask) {
+	printf("oi, sou o handler \n");
+	//limpa interrupcao do PIO
+	uint32_t pioIntStatus;
+	pioIntStatus =  pio_get_interrupt_status(BUT2_PIO);
+	
+	uint16_t rtn_err;
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+	sprintf((char *)gau8SentBuffer, "%s%s%s", MAIN_PREFIX_BUFFER_POST, "2", MAIN_POST);
+	rtn_err = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
+	
+	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+
+	printf("rtn_err: %d \n", rtn_err);
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+}
+
+
+void but3_Handler(uint32_t id, uint32_t mask) {
+	printf("oi, sou o handler \n");
+	//limpa interrupcao do PIO
+	uint32_t pioIntStatus;
+	pioIntStatus =  pio_get_interrupt_status(BUT3_PIO);
+	
+	uint16_t rtn_err;
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+	sprintf((char *)gau8SentBuffer, "%s%s%s", MAIN_PREFIX_BUFFER_POST, "3", MAIN_POST);
+	rtn_err = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
+	
+	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+
+	printf("rtn_err: %d \n", rtn_err);
+	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+}
+
+void but_init(Pio *p_but_pio, const u_int32_t pio_id, const u_int32_t but_pin_mask) {
+	printf("oi, sou o init \n");
+	/* config. pino botao em modo de entrada */
+	pmc_enable_periph_clk(pio_id);
+	pio_set_input(p_but_pio, but_pin_mask, PIO_PULLUP | PIO_DEBOUNCE);
+	
+	/* config. interrupcao em borda de descida no botao do kit */
+	/* indica funcao (but_Handler) a ser chamada quando houver uma interrupção */
+	pio_enable_interrupt(p_but_pio, but_pin_mask);
+	
+	switch (but_pin_mask) {
+		case BUT_PIN_MASK:
+		pio_handler_set(p_but_pio, pio_id, but_pin_mask, PIO_IT_FALL_EDGE, but_Handler);
+		break;
+		case BUT1_PIN_MASK:
+		pio_handler_set(p_but_pio, pio_id, but_pin_mask, PIO_IT_FALL_EDGE, but1_Handler);
+		break;
+		case BUT2_PIN_MASK:
+		pio_handler_set(p_but_pio, pio_id, but_pin_mask, PIO_IT_FALL_EDGE, but2_Handler);
+		break;
+		case BUT3_PIN_MASK:
+		pio_handler_set(p_but_pio, pio_id, but_pin_mask, PIO_IT_FALL_EDGE, but3_Handler);
+		break;
+	}
+	
+	NVIC_EnableIRQ(pio_id);
+	NVIC_SetPriority(pio_id, 1);
+	
+}
+
+
+
+
+
+
 
 /**
  * \brief Callback to get the Data from socket.
@@ -233,8 +370,8 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 	/* Message send */
 	case SOCKET_MSG_SEND:
 	{
-		printf("socket_cb: send success!\r\n");
-		recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+		//printf("socket_cb: send success!\r\n");
+		//recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
 	  //printf("TCP Server Test Complete!\r\n");
 		//printf("close socket\n");
 		//close(tcp_client_socket);
@@ -252,27 +389,26 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 
 		if (pstrRecv && pstrRecv->s16BufferSize > 0) {
 
-
-		// Para debug das mensagens do socket
-		printf("%s",pstrRecv->pu8Buffer);
-		const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-4];
-		printf("%s", last);
-		if(last[0] == '1')
-		pio_clear(LED_PIO, LED_PIN_MASK);
-		else if(last[0] == '0')
-		pio_set(LED_PIO, LED_PIN_MASK);
-		if(last[1] == '1')
-		pio_clear(LED1_PIO, LED1_PIN_MASK);
-		else if(last[1] == '0')
-		pio_set(LED1_PIO, LED1_PIN_MASK);
-		if(last[2] == '1')
-		pio_clear(LED2_PIO, LED2_PIN_MASK);
-		else if(last[2] == '0')
-		pio_set(LED2_PIO, LED2_PIN_MASK);
-		if(last[3] == '1')
-		pio_clear(LED3_PIO, LED3_PIN_MASK);
-		else if(last[3] == '0')
-		pio_set(LED3_PIO, LED3_PIN_MASK);
+			// Para debug das mensagens do socket
+			printf("%s",pstrRecv->pu8Buffer);
+			const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-4];
+			printf("%s", last);
+			if(last[0] == '1')
+			pio_clear(LED_PIO, LED_PIN_MASK);
+			else if(last[0] == '0')
+			pio_set(LED_PIO, LED_PIN_MASK);
+			if(last[1] == '1')
+			pio_clear(LED1_PIO, LED1_PIN_MASK);
+			else if(last[1] == '0')
+			pio_set(LED1_PIO, LED1_PIN_MASK);
+			if(last[2] == '1')
+			pio_clear(LED2_PIO, LED2_PIN_MASK);
+			else if(last[2] == '0')
+			pio_set(LED2_PIO, LED2_PIN_MASK);
+			if(last[3] == '1')
+			pio_clear(LED3_PIO, LED3_PIN_MASK);
+			else if(last[3] == '0')
+			pio_set(LED3_PIO, LED3_PIN_MASK);
 
       // limpa o buffer de recepcao e tx
       memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize);
@@ -392,6 +528,10 @@ int main(void)
 	pmc_enable_periph_clk(LED3_PIO_ID);
 	pio_set_output(LED3_PIO, LED3_PIN_MASK, 0, 0, 0);
 
+	but_init(BUT_PIO, BUT_PIO_ID, BUT_PIN_MASK);
+	but_init(BUT1_PIO, BUT1_PIO_ID, BUT1_PIN_MASK);
+	but_init(BUT2_PIO, BUT2_PIO_ID, BUT2_PIN_MASK);
+	but_init(BUT3_PIO, BUT3_PIO_ID, BUT3_PIN_MASK);
 	/* Initialize socket address structure. */
 	addr.sin_family = AF_INET;
 	addr.sin_port = _htons(MAIN_SERVER_PORT);
@@ -409,7 +549,7 @@ int main(void)
 		}
 	}
 	/* Initialize GET TC */
-	TC_init(TC0, ID_TC0, 0, 2);
+	TC_init(TC0, ID_TC0, 0, 10);
 
 	/* Initialize socket module */
 	socketInit();

@@ -46,7 +46,7 @@ extern "C" {
 #endif
 
 /** Wi-Fi Settings */
-#define MAIN_WLAN_SSID                    "Marotzke" //"TP-LINK_9AE8" /**< Destination SSID */
+#define MAIN_WLAN_SSID                    "OPEN" //"TP-LINK_9AE8" /**< Destination SSID */
 #define MAIN_WLAN_AUTH                    M2M_WIFI_SEC_WPA_PSK /**< Security manner */
 #define MAIN_WLAN_PSK                     "12345678" /**< Password for Destination SSID */
 #define MAIN_WIFI_M2M_PRODUCT_NAME        "SAME70"
@@ -57,10 +57,12 @@ extern "C" {
 #define MAIN_PREFIX_BUFFER                  "GET /led_status"
 #define MAIN_POST                           " HTTP/1.1\r\n Accept: */*\r\n\r\n"
 
+#define MAIN_PREFIX_BUFFER_POST             "GET /btn_clicked?bt="
+
 #define MAIN_WIFI_M2M_BUFFER_SIZE          1460
 
 #define MAIN_SERVER_PORT                   (5000)
-#define MAIN_SERVER_IP                     0x212BA8C0//0x6601A8C0//0x9000A8C0 // 0x8A00A8C0  // 192.168.0.138 192.168.0.144
+#define MAIN_SERVER_IP                     0x9000A8C0//0x6601A8C0//0x9000A8C0 // 0x8A00A8C0  // 192.168.0.138 192.168.0.144
 
 #ifdef __cplusplus
 }
