@@ -6,12 +6,11 @@ app = Flask(__name__)
 #main.text = "OFF"
 
 global_led_status = ['0']*4
-global_btn_status = [[]]*4
-global_btn_status[0] = [1,1,1]
-
+global_btn_status = [0]*4
+global_btn_status[1]
 @app.route('/')
 def hello_world():
-    return 'Hello, World!'
+    return 'CORE'
 
 @app.route('/led',methods=['GET','POST'])
 def led_status_change():
@@ -34,22 +33,22 @@ def get_led_status():
         r_string += str(status)
     return r_string
 
-@app.route('/btn',methods=['GET'])
+@app.route('/btn_clicked',methods=['GET'])
 def btn_status_change():
     global global_btn_status
     btn_number = int(request.args.get('bt'))
-    global_btn_status[btn_number].append(1)
-    return "LED {1} is now:{0}".format(status, led_number)
+    global_btn_status[btn_number] += 1
+    return "BTN {0} was clicked".format(btn_number)
 
 @app.route('/btn_status',methods=['GET'])
 def btn_status():
     global global_btn_status
     btn_number = int(request.args.get('bt'))
-    if(len(global_btn_status[btn_number]) > 0):
-        global_btn_status[btn_number].pop()
-        return 1
+    if(global_btn_status[btn_number] > 0):
+        global_btn_status[btn_number] -= 1
+        return '1'
     else:
-        return 0
+        return '0'
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", threaded=True)
