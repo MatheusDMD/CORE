@@ -4,6 +4,7 @@
 #include "common/include/nm_common.h"
 #include "driver/include/m2m_wifi.h"
 #include "socket/include/socket.h"
+#include "arm_math.h"
 
 /************************************************************************/
 /*  Defines                                                             */
@@ -11,12 +12,12 @@
 
 #define STRING_EOL    "\r\n"
 #define STRING_HEADER "-- WINC1500 TCP server example --"STRING_EOL \
-	"-- "BOARD_NAME " --"STRING_EOL	\
-	"-- Compiled: "__DATE__ " "__TIME__ " --"STRING_EOL
+"-- "BOARD_NAME " --"STRING_EOL	\
+"-- Compiled: "__DATE__ " "__TIME__ " --"STRING_EOL
 
 /**
- * LEDs
- */
+* LEDs
+*/
 #define LED_PIO_ID			ID_PIOC
 #define LED_PIO       	PIOC
 #define LED_PIN					8
@@ -54,21 +55,39 @@
 #define BUT1_PIN_MASK (1 << BUT1_PIN)
 
 // Botão 2
-#define BUT2_PIO_ID   ID_PIOD
-#define BUT2_PIO      PIOD
-#define BUT2_PIN      30
+#define BUT2_PIO_ID   ID_PIOA
+#define BUT2_PIO      PIOA
+#define BUT2_PIN      3
 #define BUT2_PIN_MASK (1 << BUT2_PIN)
 
 // Botão 3
-#define BUT3_PIO_ID   ID_PIOC
-#define BUT3_PIO      PIOC
-#define BUT3_PIN      13
+#define BUT3_PIO_ID   ID_PIOA
+#define BUT3_PIO      PIOA
+#define BUT3_PIN      4
 #define BUT3_PIN_MASK (1 << BUT3_PIN)
-/************************************************************************/
+
+#define MODEL "BYJ48"
+#define STEPS_PER_REVOLUTION 4096
+
+#define N_STEPS 4
+#define STEPMOTOR_DELAY_MS 10
+#define N_ACTIVATIONS 135
 /*  Global vars                                                         */
 /************************************************************************/
 
 /** Message format definitions. */
+
+typedef struct {
+	uint32_t pio_id;
+	Pio *pio;
+	int pin;
+	int mask;
+} atmel_pin;
+
+atmel_pin pins[N_STEPS];
+
+atmel_pin step0, step1, step2, step3;
+
 typedef struct s_msg_wifi_product {
 	uint8_t name[9];
 } t_msg_wifi_product;
@@ -81,6 +100,7 @@ static t_msg_wifi_product msg_wifi_product = {
 /** Receive buffer definition. */
 static uint8_t gau8SocketTestBuffer[MAIN_WIFI_M2M_BUFFER_SIZE];
 
+
 /** Socket for TCP communication */
 static SOCKET tcp_client_socket = -1;
 
@@ -89,7 +109,7 @@ static uint8_t wifi_connected;
 
 /** Receive buffer definition. */
 static uint8_t gau8ReceivedBuffer[MAIN_WIFI_M2M_BUFFER_SIZE] = {0};
-	
+
 static uint8_t gau8SentBuffer[MAIN_WIFI_M2M_BUFFER_SIZE] = {0};
 
 struct sockaddr_in addr;
@@ -116,8 +136,75 @@ enum MSG_SOCKET_COMMANDS {COMMAND_LED_ON, COMMAND_LED_OFF, COMMAND_LED_STATUS, C
 /************************************************************************/
 
 /**
- * \brief Configure UART console.
- */
+* \brief Configure UART console.
+*/
+
+void StepperMotor_init(void) {
+	// Pins (in order): PD30, PB4, PA21, PB13
+	printf("MOTOR INIT");
+	
+	step0.pio_id = ID_PIOD;
+	step0.pio = PIOD;
+	step0.pin = 30;
+	step0.mask = (1 << step0.pin);
+	pins[0] = step0;
+	
+	step0.pio_id = ID_PIOB;
+	step1.pio = PIOB;
+	step1.pin = 4;
+	step1.mask = (1 << step1.pin);
+	pins[1] = step1;
+	
+	step0.pio_id = ID_PIOA;
+	step2.pio = PIOA;
+	step2.pin = 21;
+	step2.mask = (1 << step2.pin);
+	pins[2] = step2;
+	
+	step0.pio_id = ID_PIOD;
+	step3.pio = PIOD;
+	step3.pin = 4;
+	step3.mask = (1 << step3.pin);
+	pins[3] = step3;
+}
+
+void rotate(float degrees) {
+	printf("ROTATING MOTOR");
+	int ccw = 0;
+	int deg = 0;
+	
+	if(degrees < 0) {
+		ccw = 1;
+		deg = -degrees;
+	} else
+	deg = degrees;
+	
+	float numSteps = STEPS_PER_REVOLUTION * (deg / 360.0) / 8.0;
+	
+	if(ccw) {
+		printf("SET MOTOR CCW");
+		for(int i = 0; i < ceil(numSteps); i++) {
+			for(int j = N_STEPS-1; j >= 0; j--) {
+				pio_set(pins[j].pio, pins[j].mask);
+				delay_ms(STEPMOTOR_DELAY_MS);
+				pio_clear(pins[j].pio, pins[j].mask);
+				delay_ms(STEPMOTOR_DELAY_MS);
+			}
+		}
+		} else {
+				printf("SET MOTOR CW");
+				for(int i = 0; i < ceil(numSteps); i++) {
+					for(int j = 0; j < N_STEPS; j++) {
+						pio_set(pins[j].pio, pins[j].mask);
+						delay_ms(STEPMOTOR_DELAY_MS);
+						pio_clear(pins[j].pio, pins[j].mask);
+						delay_ms(STEPMOTOR_DELAY_MS);
+				}
+			}
+		}
+}
+
+
 static void configure_console(void)
 {
 	const usart_serial_options_t uart_serial_options = {
@@ -133,34 +220,34 @@ static void configure_console(void)
 }
 
 /**
- * Faz a interpreta��o da mensagem
- * enviada via socket txp/ip
- * retorna um numero equivalente ao
- * comando a ser executado
- */
+* Faz a interpreta��o da mensagem
+* enviada via socket txp/ip
+* retorna um numero equivalente ao
+* comando a ser executado
+*/
 uint8_t message_parsing(uint8_t *message){
 
-  if(!strcmp(message, MSG_SOCKET_LED_ON)){
-    printf(MSG_SOCKET_LED_ON_ACK);
-    return(COMMAND_LED_ON);
-  }
-  else if(!strcmp(message, MSG_SOCKET_LED_OFF)){
-    printf(MSG_SOCKET_LED_OFF);
-    return(COMMAND_LED_OFF);
-  }
-  else if(!strcmp(message, MSG_SOCKET_LED_STATUS)){
-     printf(MSG_SOCKET_LED_STATUS);
-     return(COMMAND_LED_STATUS);
-  }
-  else{
-    printf(MSG_SOCKET_ERRO);
-    return(COMMAND_ERRO);
-  }
+	if(!strcmp(message, MSG_SOCKET_LED_ON)){
+		//printf(MSG_SOCKET_LED_ON_ACK);
+		return(COMMAND_LED_ON);
+	}
+	else if(!strcmp(message, MSG_SOCKET_LED_OFF)){
+		//printf(MSG_SOCKET_LED_OFF);
+		return(COMMAND_LED_OFF);
+	}
+	else if(!strcmp(message, MSG_SOCKET_LED_STATUS)){
+		//printf(MSG_SOCKET_LED_STATUS);
+		return(COMMAND_LED_STATUS);
+	}
+	else{
+		//printf(MSG_SOCKET_ERRO);
+		return(COMMAND_ERRO);
+	}
 }
 
 /**
- * @Brief Inicializa o pino do LED
- */
+* @Brief Inicializa o pino do LED
+*/
 
 void TC_init( Tc *TC, uint32_t ID_TC,  uint32_t channel, uint32_t freq ){
 	uint32_t ul_div;
@@ -190,21 +277,21 @@ void TC_init( Tc *TC, uint32_t ID_TC,  uint32_t channel, uint32_t freq ){
 void TC0_Handler(void){
 	volatile uint32_t ul_dummy;
 
-    /****************************************************************
+	/****************************************************************
 	* Devemos indicar ao TC que a interrup��o foi satisfeita.
-    ******************************************************************/
+	******************************************************************/
 	ul_dummy = tc_get_status(TC0, 0);
 
 	/* Avoid compiler warning */
 	UNUSED(ul_dummy);
 
 	if(ready_to_send){
-	  memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
+		memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
 		memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
-	  sprintf((char *)gau8SentBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+		sprintf((char *)gau8SentBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
 		rtn = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
-	  recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-		printf("Pronto para enviar: %d \n", rtn);
+		recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+		//printf("Pronto para enviar: %d \n", rtn);
 	}
 }
 /************************************************************************/
@@ -212,7 +299,7 @@ void TC0_Handler(void){
 /************************************************************************/
 
 void but_Handler(uint32_t id, uint32_t mask) {
-	printf("oi, sou o handler \n");
+	//printf("oi, sou o handler \n");
 	//limpa interrupcao do PIO
 	uint32_t pioIntStatus;
 	pioIntStatus =  pio_get_interrupt_status(BUT_PIO);
@@ -222,15 +309,15 @@ void but_Handler(uint32_t id, uint32_t mask) {
 	sprintf((char *)gau8SentBuffer, "%s%s%s", MAIN_PREFIX_BUFFER_POST, "0", MAIN_POST);
 	rtn_err = send(tcp_client_socket, gau8SentBuffer, strlen((char *)gau8SentBuffer), 0);
 	
-	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);	
+	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
 	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
 
-	printf("rtn_err: %d \n", rtn_err);
+	//printf("rtn_err: %d \n", rtn_err);
 	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
 }
 
 void but1_Handler(uint32_t id, uint32_t mask) {
-	printf("oi, sou o handler \n");
+	//printf("oi, sou o handler \n");
 	//limpa interrupcao do PIO
 	uint32_t pioIntStatus;
 	pioIntStatus =  pio_get_interrupt_status(BUT1_PIO);
@@ -243,13 +330,13 @@ void but1_Handler(uint32_t id, uint32_t mask) {
 	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
 	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
 
-	printf("rtn_err: %d \n", rtn_err);
+	//printf("rtn_err: %d \n", rtn_err);
 	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
 }
 
 
 void but2_Handler(uint32_t id, uint32_t mask) {
-	printf("oi, sou o handler \n");
+	//printf("oi, sou o handler \n");
 	//limpa interrupcao do PIO
 	uint32_t pioIntStatus;
 	pioIntStatus =  pio_get_interrupt_status(BUT2_PIO);
@@ -262,13 +349,13 @@ void but2_Handler(uint32_t id, uint32_t mask) {
 	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
 	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
 
-	printf("rtn_err: %d \n", rtn_err);
+	//printf("rtn_err: %d \n", rtn_err);
 	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
 }
 
 
 void but3_Handler(uint32_t id, uint32_t mask) {
-	printf("oi, sou o handler \n");
+	//printf("oi, sou o handler \n");
 	//limpa interrupcao do PIO
 	uint32_t pioIntStatus;
 	pioIntStatus =  pio_get_interrupt_status(BUT3_PIO);
@@ -281,12 +368,12 @@ void but3_Handler(uint32_t id, uint32_t mask) {
 	memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
 	recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
 
-	printf("rtn_err: %d \n", rtn_err);
+	//printf("rtn_err: %d \n", rtn_err);
 	memset(gau8SentBuffer, 0, sizeof(gau8SentBuffer));
 }
 
 void but_init(Pio *p_but_pio, const u_int32_t pio_id, const u_int32_t but_pin_mask) {
-	printf("oi, sou o init \n");
+	//printf("oi, sou o init \n");
 	/* config. pino botao em modo de entrada */
 	pmc_enable_periph_clk(pio_id);
 	pio_set_input(p_but_pio, but_pin_mask, PIO_PULLUP | PIO_DEBOUNCE);
@@ -322,171 +409,182 @@ void but_init(Pio *p_but_pio, const u_int32_t pio_id, const u_int32_t but_pin_ma
 
 
 /**
- * \brief Callback to get the Data from socket.
- *
- * \param[in] sock socket handler.
- * \param[in] u8Msg socket event type. Possible values are:
- *  - SOCKET_MSG_BIND
- *  - SOCKET_MSG_LISTEN
- *  - SOCKET_MSG_ACCEPT
- *  - SOCKET_MSG_CONNECT
- *  - SOCKET_MSG_RECV
- *  - SOCKET_MSG_SEND
- *  - SOCKET_MSG_SENDTO
- *  - SOCKET_MSG_RECVFROM
- * \param[in] pvMsg is a pointer to message structure. Existing types are:
- *  - tstrSocketBindMsg
- *  - tstrSocketListenMsg
- *  - tstrSocketAcceptMsg
- *  - tstrSocketConnectMsg
- *  - tstrSocketRecvMsg
- */
+* \brief Callback to get the Data from socket.
+*
+* \param[in] sock socket handler.
+* \param[in] u8Msg socket event type. Possible values are:
+*  - SOCKET_MSG_BIND
+*  - SOCKET_MSG_LISTEN
+*  - SOCKET_MSG_ACCEPT
+*  - SOCKET_MSG_CONNECT
+*  - SOCKET_MSG_RECV
+*  - SOCKET_MSG_SEND
+*  - SOCKET_MSG_SENDTO
+*  - SOCKET_MSG_RECVFROM
+* \param[in] pvMsg is a pointer to message structure. Existing types are:
+*  - tstrSocketBindMsg
+*  - tstrSocketListenMsg
+*  - tstrSocketAcceptMsg
+*  - tstrSocketConnectMsg
+*  - tstrSocketRecvMsg
+*/
 static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 {
 	switch (u8Msg) {
 
-  /* Socket connected */
-  case SOCKET_MSG_CONNECT:
-  {
-    //memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-    //sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+		/* Socket connected */
+		case SOCKET_MSG_CONNECT:
+		{
+			//memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
+			//sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
 
-    tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
-    if (pstrConnect && pstrConnect->s8Error >= 0) {
-		ready_to_send = 1;
-		//printf("socket_cb: connect success!\r\n");
-		//rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
-		//memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
-      //recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-      } else {
-		  printf("socket_cb: connect error!\r\n");
-		  ready_to_send = 0;
-		  close(tcp_client_socket);
-		  tcp_client_socket = -1;
-    }
-  }
-  break;
-
-	/* Message send */
-	case SOCKET_MSG_SEND:
-	{
-		//printf("socket_cb: send success!\r\n");
-		//recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-	  //printf("TCP Server Test Complete!\r\n");
-		//printf("close socket\n");
-		//close(tcp_client_socket);
-		//close(tcp_server_socket);
-	}
-	break;
-
-	/* Message receive */
-	case SOCKET_MSG_RECV:
-	{
-		tstrSocketRecvMsg *pstrRecv = (tstrSocketRecvMsg *)pvMsg;
-    uint8_t  messageAck[64];
-    uint16_t messageAckSize;
-    uint8_t  command;
-
-		if (pstrRecv && pstrRecv->s16BufferSize > 0) {
-
-			// Para debug das mensagens do socket
-			printf("%s",pstrRecv->pu8Buffer);
-			const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-4];
-			printf("%s", last);
-			if(last[0] == '1')
-			pio_clear(LED_PIO, LED_PIN_MASK);
-			else if(last[0] == '0')
-			pio_set(LED_PIO, LED_PIN_MASK);
-			if(last[1] == '1')
-			pio_clear(LED1_PIO, LED1_PIN_MASK);
-			else if(last[1] == '0')
-			pio_set(LED1_PIO, LED1_PIN_MASK);
-			if(last[2] == '1')
-			pio_clear(LED2_PIO, LED2_PIN_MASK);
-			else if(last[2] == '0')
-			pio_set(LED2_PIO, LED2_PIN_MASK);
-			if(last[3] == '1')
-			pio_clear(LED3_PIO, LED3_PIN_MASK);
-			else if(last[3] == '0')
-			pio_set(LED3_PIO, LED3_PIN_MASK);
-
-      // limpa o buffer de recepcao e tx
-      memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize);
-
-      // envia a resposta
-      //delay_s(1);
-      //sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
-      //send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
-
-      // Requista novos dados
-      //recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
-
- 		} else {
-			printf("socket_cb: recv error!\r\n");
-			close(tcp_client_socket);
-			tcp_client_socket = -1;
+			tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
+			if (pstrConnect && pstrConnect->s8Error >= 0) {
+				ready_to_send = 1;
+				//printf("socket_cb: connect success!\r\n");
+				//rtn = send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+				//memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+				//recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+				} else {
+				printf("socket_cb: connect error!\r\n");
+				ready_to_send = 0;
+				close(tcp_client_socket);
+				tcp_client_socket = -1;
+			}
 		}
-	}
+		break;
 
-	break;
+		/* Message send */
+		case SOCKET_MSG_SEND:
+		{
+			//printf("socket_cb: send success!\r\n");
+			//recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+			//printf("TCP Server Test Complete!\r\n");
+			//printf("close socket\n");
+			//close(tcp_client_socket);
+			//close(tcp_server_socket);
+		}
+		break;
 
-	default:
+		/* Message receive */
+		case SOCKET_MSG_RECV:
+		{
+			tstrSocketRecvMsg *pstrRecv = (tstrSocketRecvMsg *)pvMsg;
+			uint8_t  messageAck[64];
+			uint16_t messageAckSize;
+			uint8_t  command;
+
+			if (pstrRecv && pstrRecv->s16BufferSize > 0) {
+
+				// Para debug das mensagens do socket
+				//printf("%s",pstrRecv->pu8Buffer);
+				const char *last = &pstrRecv->pu8Buffer[pstrRecv->s16BufferSize-6];
+				printf("%d\n", last[4]);
+				//printf("%s", last);
+				
+				if(last[0] == '1')
+					pio_clear(LED_PIO, LED_PIN_MASK);
+				else if(last[0] == '0')
+					pio_set(LED_PIO, LED_PIN_MASK);
+				
+				if(last[1] == '1')
+					pio_clear(LED1_PIO, LED1_PIN_MASK);
+				else if(last[1] == '0')
+					pio_set(LED1_PIO, LED1_PIN_MASK);
+				
+				if(last[2] == '1')
+					pio_clear(LED2_PIO, LED2_PIN_MASK);
+				else if(last[2] == '0')
+					pio_set(LED2_PIO, LED2_PIN_MASK);
+				
+				if(last[3] == '1')
+					pio_clear(LED3_PIO, LED3_PIN_MASK);
+				else if(last[3] == '0')
+					pio_set(LED3_PIO, LED3_PIN_MASK);
+				
+				if(last[4] == 'S')
+					rotate(90);
+				else if(last[4] == 'R')
+					rotate(90);
+
+				
+
+				// limpa o buffer de recepcao e tx
+				memset(pstrRecv->pu8Buffer, 0, pstrRecv->s16BufferSize);
+
+				// envia a resposta
+				//delay_s(1);
+				//sprintf((char *)gau8ReceivedBuffer, "%s%s",MAIN_PREFIX_BUFFER,MAIN_POST);
+				//send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+
+				// Requista novos dados
+				//recv(tcp_client_socket, gau8SocketTestBuffer, sizeof(gau8SocketTestBuffer), 0);
+
+				} else {
+				//printf("socket_cb: recv error!\r\n");
+				close(tcp_client_socket);
+				tcp_client_socket = -1;
+			}
+		}
+
+		break;
+
+		default:
 		break;
 	}
 }
 
 /**
- * \brief Callback to get the Wi-Fi status update.
- *
- * \param[in] u8MsgType type of Wi-Fi notification. Possible types are:
- *  - [M2M_WIFI_RESP_CURRENT_RSSI](@ref M2M_WIFI_RESP_CURRENT_RSSI)
- *  - [M2M_WIFI_RESP_CON_STATE_CHANGED](@ref M2M_WIFI_RESP_CON_STATE_CHANGED)
- *  - [M2M_WIFI_RESP_CONNTION_STATE](@ref M2M_WIFI_RESP_CONNTION_STATE)
- *  - [M2M_WIFI_RESP_SCAN_DONE](@ref M2M_WIFI_RESP_SCAN_DONE)
- *  - [M2M_WIFI_RESP_SCAN_RESULT](@ref M2M_WIFI_RESP_SCAN_RESULT)
- *  - [M2M_WIFI_REQ_WPS](@ref M2M_WIFI_REQ_WPS)
- *  - [M2M_WIFI_RESP_IP_CONFIGURED](@ref M2M_WIFI_RESP_IP_CONFIGURED)
- *  - [M2M_WIFI_RESP_IP_CONFLICT](@ref M2M_WIFI_RESP_IP_CONFLICT)
- *  - [M2M_WIFI_RESP_P2P](@ref M2M_WIFI_RESP_P2P)
- *  - [M2M_WIFI_RESP_AP](@ref M2M_WIFI_RESP_AP)
- *  - [M2M_WIFI_RESP_CLIENT_INFO](@ref M2M_WIFI_RESP_CLIENT_INFO)
- * \param[in] pvMsg A pointer to a buffer containing the notification parameters
- * (if any). It should be casted to the correct data type corresponding to the
- * notification type. Existing types are:
- *  - tstrM2mWifiStateChanged
- *  - tstrM2MWPSInfo
- *  - tstrM2MP2pResp
- *  - tstrM2MAPResp
- *  - tstrM2mScanDone
- *  - tstrM2mWifiscanResult
- */
+* \brief Callback to get the Wi-Fi status update.
+*
+* \param[in] u8MsgType type of Wi-Fi notification. Possible types are:
+*  - [M2M_WIFI_RESP_CURRENT_RSSI](@ref M2M_WIFI_RESP_CURRENT_RSSI)
+*  - [M2M_WIFI_RESP_CON_STATE_CHANGED](@ref M2M_WIFI_RESP_CON_STATE_CHANGED)
+*  - [M2M_WIFI_RESP_CONNTION_STATE](@ref M2M_WIFI_RESP_CONNTION_STATE)
+*  - [M2M_WIFI_RESP_SCAN_DONE](@ref M2M_WIFI_RESP_SCAN_DONE)
+*  - [M2M_WIFI_RESP_SCAN_RESULT](@ref M2M_WIFI_RESP_SCAN_RESULT)
+*  - [M2M_WIFI_REQ_WPS](@ref M2M_WIFI_REQ_WPS)
+*  - [M2M_WIFI_RESP_IP_CONFIGURED](@ref M2M_WIFI_RESP_IP_CONFIGURED)
+*  - [M2M_WIFI_RESP_IP_CONFLICT](@ref M2M_WIFI_RESP_IP_CONFLICT)
+*  - [M2M_WIFI_RESP_P2P](@ref M2M_WIFI_RESP_P2P)
+*  - [M2M_WIFI_RESP_AP](@ref M2M_WIFI_RESP_AP)
+*  - [M2M_WIFI_RESP_CLIENT_INFO](@ref M2M_WIFI_RESP_CLIENT_INFO)
+* \param[in] pvMsg A pointer to a buffer containing the notification parameters
+* (if any). It should be casted to the correct data type corresponding to the
+* notification type. Existing types are:
+*  - tstrM2mWifiStateChanged
+*  - tstrM2MWPSInfo
+*  - tstrM2MP2pResp
+*  - tstrM2MAPResp
+*  - tstrM2mScanDone
+*  - tstrM2mWifiscanResult
+*/
 static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 {
 	switch (u8MsgType) {
-	case M2M_WIFI_RESP_CON_STATE_CHANGED:
-	{
-		tstrM2mWifiStateChanged *pstrWifiState = (tstrM2mWifiStateChanged *)pvMsg;
-		if (pstrWifiState->u8CurrState == M2M_WIFI_CONNECTED) {
-			printf("wifi_cb: M2M_WIFI_RESP_CON_STATE_CHANGED: CONNECTED\r\n");
-			m2m_wifi_request_dhcp_client();
-		} else if (pstrWifiState->u8CurrState == M2M_WIFI_DISCONNECTED) {
-			printf("wifi_cb: M2M_WIFI_RESP_CON_STATE_CHANGED: DISCONNECTED\r\n");
-			wifi_connected = 0;
-			m2m_wifi_connect((char *)MAIN_WLAN_SSID, sizeof(MAIN_WLAN_SSID), MAIN_WLAN_AUTH, (char *)MAIN_WLAN_PSK, M2M_WIFI_CH_ALL);
+		case M2M_WIFI_RESP_CON_STATE_CHANGED:
+		{
+			tstrM2mWifiStateChanged *pstrWifiState = (tstrM2mWifiStateChanged *)pvMsg;
+			if (pstrWifiState->u8CurrState == M2M_WIFI_CONNECTED) {
+				//printf("wifi_cb: M2M_WIFI_RESP_CON_STATE_CHANGED: CONNECTED\r\n");
+				m2m_wifi_request_dhcp_client();
+				} else if (pstrWifiState->u8CurrState == M2M_WIFI_DISCONNECTED) {
+				//printf("wifi_cb: M2M_WIFI_RESP_CON_STATE_CHANGED: DISCONNECTED\r\n");
+				wifi_connected = 0;
+				m2m_wifi_connect((char *)MAIN_WLAN_SSID, sizeof(MAIN_WLAN_SSID), MAIN_WLAN_AUTH, (char *)MAIN_WLAN_PSK, M2M_WIFI_CH_ALL);
+			}
 		}
-	}
-	break;
+		break;
 
-	case M2M_WIFI_REQ_DHCP_CONF:
-	{
-		uint8_t *pu8IPAddress = (uint8_t *)pvMsg;
-		wifi_connected = 1;
-		printf("wifi_cb: M2M_WIFI_REQ_DHCP_CONF: IP is %u.%u.%u.%u\r\n",
-				pu8IPAddress[0], pu8IPAddress[1], pu8IPAddress[2], pu8IPAddress[3]);
-	}
-	break;
+		case M2M_WIFI_REQ_DHCP_CONF:
+		{
+			uint8_t *pu8IPAddress = (uint8_t *)pvMsg;
+			wifi_connected = 1;
+			//printf("wifi_cb: M2M_WIFI_REQ_DHCP_CONF: IP is %u.%u.%u.%u\r\n",pu8IPAddress[0], pu8IPAddress[1], pu8IPAddress[2], pu8IPAddress[3]);
+		}
+		break;
 
-	default:
+		default:
 		break;
 	}
 }
@@ -496,12 +594,12 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 /************************************************************************/
 
 /**
- * \brief Main application function.
- *
- * Initialize system, UART console, network then test function of TCP server.
- *
- * \return program return value.
- */
+* \brief Main application function.
+*
+* Initialize system, UART console, network then test function of TCP server.
+*
+* \return program return value.
+*/
 int main(void)
 {
 	ready_to_send = 0;
@@ -516,8 +614,7 @@ int main(void)
 	/* Initialize the BSP. */
 	nm_bsp_init();
 
-	pmc_enable_periph_clk(LED_PIO_ID);
-	pio_set_output(LED_PIO, LED_PIN_MASK, 0, 0, 0);
+
 
 	pmc_enable_periph_clk(LED_PIO_ID);
 	pio_set_output(LED_PIO, LED_PIN_MASK, 0, 0, 0);
@@ -527,11 +624,20 @@ int main(void)
 	pio_set_output(LED2_PIO, LED2_PIN_MASK, 0, 0, 0);
 	pmc_enable_periph_clk(LED3_PIO_ID);
 	pio_set_output(LED3_PIO, LED3_PIN_MASK, 0, 0, 0);
-
+	
+	for(int i = 0; i < N_STEPS; i++) {
+		pmc_enable_periph_clk(pins[i].pio_id);
+		pio_set_output(pins[i].pio, pins[i].mask, 0, 0, 0);
+	}
+	
+	StepperMotor_init();
 	but_init(BUT_PIO, BUT_PIO_ID, BUT_PIN_MASK);
 	but_init(BUT1_PIO, BUT1_PIO_ID, BUT1_PIN_MASK);
 	but_init(BUT2_PIO, BUT2_PIO_ID, BUT2_PIN_MASK);
 	but_init(BUT3_PIO, BUT3_PIO_ID, BUT3_PIN_MASK);
+	
+	rotate(90);
+	//StepperMotor_init();
 	/* Initialize socket address structure. */
 	addr.sin_family = AF_INET;
 	addr.sin_port = _htons(MAIN_SERVER_PORT);
@@ -544,7 +650,7 @@ int main(void)
 	param.pfAppWifiCb = wifi_cb;
 	ret = m2m_wifi_init(&param);
 	if (M2M_SUCCESS != ret) {
-		printf("main: m2m_wifi_init call error!(%d)\r\n", ret);
+		//printf("main: m2m_wifi_init call error!(%d)\r\n", ret);
 		while (1) {
 		}
 	}
@@ -564,15 +670,15 @@ int main(void)
 		if (wifi_connected == M2M_WIFI_CONNECTED) {
 			if (tcp_client_socket < 0) {
 				if ((tcp_client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-					printf("main: failed to create TCP client socket error!\r\n");
+					//printf("main: failed to create TCP client socket error!\r\n");
 				}
 
 				/* Connect TCP client socket. */
 				if (connect(tcp_client_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) != SOCK_ERR_NO_ERROR ) {
-					printf("main: failed to connect socket error!\r\n");
+					//printf("main: failed to connect socket error!\r\n");
 					close(tcp_client_socket);
 					}else{
-					printf("Conectado ! \n");
+					//printf("Conectado ! \n");
 				}
 			}
 		}
